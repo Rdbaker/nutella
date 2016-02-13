@@ -2,11 +2,58 @@
 
 
 int main(int argc, char* argv[]) {
-  getHelp(argc, argv);
+  introduceSelf();
+  while(1) {
+    // wait for a query to come in
+    char* query = recvQuery();
+    // search for the movie
+    char* moviePath = searchForMovie(query);
+    // if the path is NULL, we don't have it
+    if(moviePath == NULL) {
+      movieNotFound();
+      continue;
+    }
+    // send our IP and port
+    sendServInfo();
+    // wait for a connection for the movie they asked for
+    // then send it
+    waitForMovieRequest();
+  }
   char* port = getPort(argc, argv);
   // check the "dir" arg
   // start the server loop
   runServer(port);
+}
+
+
+void waitForMovieRequest() {
+  return;
+}
+
+
+char* searchForMovie(char* movieTitle) {
+  return "";
+}
+
+
+void sendServInfo() {
+  return;
+}
+
+
+void movieNotFound() {
+  printf("Movie not found, not sending response\n");
+}
+
+
+void introduceSelf() {
+  printf("Server started.\n");
+  printf("Listening...\n");
+}
+
+
+char* recvQuery() {
+  return "";
 }
 
 
@@ -17,8 +64,6 @@ void getHelp(int argc, char* argv[]) {
     }
   }
 }
-
-
 
 
 /*
@@ -105,15 +150,6 @@ void runServer(char* port) {
 
     if (!fork()) { // this is the child process
       close(sockfd); // child doesn't need the listener
-      // recv username
-      recvusername(new_fd);
-      // generate a random key
-      char* salt = genkey();
-      // send key
-      sendkey(new_fd, salt);
-      // recv password
-      recvpw(new_fd, salt);
-      logpwok();
       // recv command
       recvcmd(new_fd);
 
@@ -150,26 +186,6 @@ void recvcmd(int sockfd) {
 }
 
 
-/*
- * receives the password and checks its validity
- */
-void recvpw(int sockfd, char* salt) {
-  char buf[MAXDATASIZE];
-  int numbytes;
-
-  if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-    perror("recv");
-    exit(1);
-  }
-  buf[numbytes] = '\0';
-
-  if(strcmp(buf, crypt(PASSWD, salt)) != 0) {
-    printf("salt: %s\n", salt);
-    printf("buf: %s\ncrypt(PASSWD, salt): %s\n", buf, crypt(PASSWD, salt));
-    fprintf(stderr, "Password is not correct\n");
-    exit(1);
-  }
-}
 
 /*
  * logs that the password is ok
@@ -200,33 +216,6 @@ void sendkey(int sockfd, char* salt) {
     perror("send");
 }
 
-
-/*
- * receive the username from the request
- */
-void recvusername(int sockfd) {
-  char buf[MAXDATASIZE];
-  int numbytes;
-
-  if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-    perror("recv");
-    exit(1);
-  }
-  buf[numbytes] = '\0';
-  logusername(buf);
-
-  if(strcmp(buf, USERNAME) != 0) {
-    fprintf(stderr, "Username %s is not registered\n", buf);
-    exit(1);
-  }
-}
-
-/*
- * log the username that was recived
- */
-void logusername(char* username) {
-  printf("received connection from: %s\n", username);
-}
 
 
 /*
@@ -296,8 +285,7 @@ int run_command(char* command) {
 
 void usage() {
   fprintf (stderr, "usage: server [flags], where flags are:\n");
-  fprintf (stderr, "\t-p #\t\tthe port to server from (default is 80085)\n");
-  fprintf (stderr, "\t-d dir\t\tthe dir to serve files from (default is /home/ubuntu/dsh)\n");
+  fprintf (stderr, "\t-p #\t\tthe port to server from (default is 8081)\n");
   fprintf (stderr, "\t-h\t\tdisplay this help message\n");
   exit(1);
 }
