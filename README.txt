@@ -1,16 +1,23 @@
 Ryan Baker
 rdbaker
 
-Distributed Shell
+Nutella
 
-NOTE: If you do not need it, please remove "-lcrypt" from the Makefile $(CFLAGS) variable. It works just fine on the CCC machines, but I could not compile it locally with that.
+
+NOTE: many settings are configurable from the src/shared.h header file. If you want some option changed, but there is no flag to change it, try changing a constant in that file, this includes things like the MOVIE_DIR, DEFAULT_FPS, QUERY_PORT, QUERY_ADDR, etc.
+
+
+NOTE: I could only get the TCP connection to work locally (i.e. "127.0.0.1")
 
 
 ******************************************
         DEPENDENCIES (Server side)
 ******************************************
 `gcc --version` returns the following:
-gcc (GCC) 4.8.3 20140911 (Red Hat 4.8.3-9)
+Configured with: --prefix=/Library/Developer/CommandLineTools/usr --with-gxx-include-dir=/usr/include/c++/4.2.1
+Apple LLVM version 7.0.2 (clang-700.1.81)
+Target: x86_64-apple-darwin14.5.0
+Thread model: posix
 
 
 `lscpu` returns the following:
@@ -61,61 +68,20 @@ Linux ip-172-31-58-142 4.1.10-17.31.amzn1.x86_64 #1 SMP Sat Oct 24 01:31:37 UTC 
         Running It (Server side)
 ******************************************
 usage: server [flags], where flags are:
-  -p #    the port to server from (default is 80085)
-  -d dir    the dir to serve files from (default is /home/ubuntu/dsh)
+  -p #    the tcp port to server from (default is 8082)
   -h    display this help message
 
-by default, this will run on port 8080
+by default, the multicast query will run on port 8081
+by default, the tcp stream will run on port 8082
 
 
 
 ******************************************
         Running It (Client side)
 ******************************************
-usage: dsh [flags] {-c command}, where flags are:
-  {-c command}  command to execute remotely
-  {-s host} the host the server is on
-  [-p #]    the port the server is on
+usage: client [flags], where flags are:
+  [-f #]    the number of frames per second
   -h    display this help message
 
-by default, this will run on port 8080
-
-
-
-******************************************
-        Example Run (Server side)
-******************************************
-$ make
-$ ./bin/server
-
-Starting server
-  port: 8080
-  dir: /home/ec2-user/dsh
-
-server: got connection from 130.215.36.57
-received connection from: rdbaker
-Password is ok
-Running command: ls
-
-server: got connection from 130.215.36.57
-received connection from: rdbaker
-Password is ok
-Running command: cat src/server.c
-
-
-******************************************
-        Example Run (Client side)
-******************************************
-$ make
-$ ./bin/dsh -s 54.209.124.158 -c "ls"
-client: connecting to 54.209.124.158
-bin
-Makefile
-obj
-README.txt
-src
-
-$ ./bin/dsh -s 54.209.124.158 -c "src/server.c"
-client: connecting to 54.209.124.158
-#include "server.h"
-...
+by default, the multicase query will run on port 8081
+by default, the tcp stream will run on port 8082

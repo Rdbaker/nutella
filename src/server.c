@@ -254,6 +254,8 @@ void runServer(char* port) {
 // send the movie frames to the client via the sockfd
 // at the specified fps
 void sendframes(int sockfd, char* mvpath, char* fps) {
+  int ifps = atoi(fps);
+  int sleeputime = ((float)1000000/((float)ifps*(float)1000000))*1000000;
   FILE* fp = fopen(mvpath, "r");
 
   if(fp == NULL) {
@@ -295,7 +297,8 @@ void sendframes(int sockfd, char* mvpath, char* fps) {
     }
     memset(frame, 0, sizeof(char) * MAXDATASIZE);
     memset(line, 0, sizeof(char) * 255);
-    usleep(100000);
+
+    usleep(sleeputime);
   }
 
   // tell the client we're done

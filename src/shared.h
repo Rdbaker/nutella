@@ -9,6 +9,7 @@
 #define RESPONSE_PORT 8082
 #define DEFAULT_FPS "3"
 #define _XOPEN_SOURCE
+#define _BSD_SOURCE
 
 #include <arpa/inet.h>
 #include <errno.h>

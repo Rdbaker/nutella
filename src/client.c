@@ -2,6 +2,7 @@
 
 
 int main(int argc, char* argv[]) {
+  char* fps = getFps(argc, argv);
   introduceSelf();
   while(1) {
     char* query = getMovieQuery();
@@ -14,8 +15,18 @@ int main(int argc, char* argv[]) {
     }
     // contact and connect to the server
     printf("about to watchMovie: %s\n", query);
-    watchMovie(servInfo, query);
+    watchMovie(servInfo, query, fps);
   }
+}
+
+
+char* getFps(int argc, char* argv[]) {
+  char* fps = DEFAULT_FPS;
+  char* newfps = getoption(argc, argv, "-f");
+  if(newfps == NULL)
+    return fps;
+  else
+    return newfps;
 }
 
 
@@ -107,7 +118,7 @@ char* queryServer(char* query) {
 
 
 // watch the movie
-void watchMovie(char* servInfo, char* movie) {
+void watchMovie(char* servInfo, char* movie, char* fps) {
   char ip[strlen(servInfo)];
   char port[strlen(servInfo)];
   memset(ip, 0, strlen(ip));
@@ -127,7 +138,7 @@ void watchMovie(char* servInfo, char* movie) {
   port[j] = '\0';
 
   // connect to the server
-  connectToServer(ip, port, movie);
+  connectToServer(ip, port, movie, fps);
   return;
 }
 
@@ -139,7 +150,7 @@ void clearScreen() {
 }
 
 
-void connectToServer(char* host, char* port, char* movie) {
+void connectToServer(char* host, char* port, char* movie, char* fps) {
   // this is bad but I need it for now, have some weird problem
   host = "127.0.0.1";
   int sockfd;
@@ -189,7 +200,7 @@ void connectToServer(char* host, char* port, char* movie) {
   sleep(1);
 
   // send fps
-  sendfps(sockfd);
+  sendfps(sockfd, fps);
 
   // receive frames
   recvframes(sockfd);
@@ -198,9 +209,9 @@ void connectToServer(char* host, char* port, char* movie) {
 }
 
 // send the fps to the server
-void sendfps(int sockfd) {
-  printf("sending fps: %s\n", DEFAULT_FPS);
-  if (send(sockfd, DEFAULT_FPS, strlen(DEFAULT_FPS), 0) == -1)
+void sendfps(int sockfd, char* fps) {
+  printf("sending fps: %s\n", fps);
+  if (send(sockfd, fps, strlen(fps), 0) == -1)
     perror("sendfps: send");
 }
 
