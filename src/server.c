@@ -2,42 +2,91 @@
 
 
 int main(int argc, char* argv[]) {
+  getHelp(argc, argv);
+  char* tcpport = getPort(argc, argv);
+  // be polite
   introduceSelf();
-  while(1) {
+
+  // fork for the sake of running a long
+  // running process on two different ports
+  pid_t pid;
+  pid = fork();
+
+  if(pid == 0) {
     // wait for a query to come in
-    char* query = recvQuery();
-    // search for the movie
-    char* moviePath = searchForMovie(query);
-    // if the path is NULL, we don't have it
-    if(moviePath == NULL) {
-      movieNotFound();
-      continue;
-    }
-    // send our IP and port
-    sendServInfo();
+    recvQuery(tcpport);
+  } else {
     // wait for a connection for the movie they asked for
     // then send it
-    waitForMovieRequest();
+    waitForMovieRequest(tcpport);
   }
-  char* port = getPort(argc, argv);
-  // check the "dir" arg
-  // start the server loop
+}
+
+
+void waitForMovieRequest(char* port) {
   runServer(port);
 }
 
 
-void waitForMovieRequest() {
-  return;
-}
-
-
 char* searchForMovie(char* movieTitle) {
-  return "";
+  // create space for the path
+  int bytesize = strlen(MOVIE_DIR) + strlen(movieTitle) + 4;
+  char* moviePath = (char *) malloc(sizeof(char) * bytesize);
+  memset(moviePath, 0, sizeof(char) * bytesize);
+  // concatenate "movies/" to the path
+  strcat(moviePath, MOVIE_DIR);
+  // concatenate the movie title to the path but remove
+  // the newline at the end of the string
+  strncat(moviePath, movieTitle, strlen(movieTitle)-1);
+  // concatenate the movie file extension to the path
+  strcat(moviePath, ".txt");
+  // see if the file exists
+  if(access(moviePath, F_OK) != -1) {
+    return moviePath;
+  } else {
+    return NULL;
+  }
 }
 
 
-void sendServInfo() {
-  return;
+void sendServInfo(char* tcpport) {
+  int fd;
+  struct ifreq ifr;
+
+  fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+  /* I want to get an IPv4 IP address */
+  ifr.ifr_addr.sa_family = AF_INET;
+
+  /* I want IP address attached to "eth0" */
+  strncpy(ifr.ifr_name, "eth0", IFNAMSIZ-1);
+
+  ioctl(fd, SIOCGIFADDR, &ifr);
+
+  close(fd);
+
+  // send server info to client
+  int sock;
+  if ((sock=msockcreate(SEND, RESPONSE_ADDR, RESPONSE_PORT)) < 0) {
+    perror("msockcreate");
+    exit(1);
+  }
+
+
+  // make space for the string
+  char* servinfo = (char*) malloc(sizeof(char) * (strlen(inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr)) + strlen(tcpport) + 1));
+
+  strcat(servinfo, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr));
+  strcat(servinfo, ":");
+  strcat(servinfo, tcpport);
+
+  printf("Movie found, sending IP:port to client: %s\n", servinfo);
+
+  // send the query to the known address
+  if (msend(sock, servinfo, strlen(servinfo)+1) < 0) {
+    perror("msend");
+    exit(1);
+  }
 }
 
 
@@ -52,8 +101,47 @@ void introduceSelf() {
 }
 
 
-char* recvQuery() {
-  return "";
+// receive a query for a movie over the network
+void recvQuery(char* tcpport) {
+  int sock;
+
+  while(1) {
+    // create the socket to send the query string
+    if ((sock=msockcreate(RECV, QUERY_ADDR, QUERY_PORT)) < 0) {
+      perror("msockcreate");
+      exit(1);
+    }
+
+    // create memory for the message
+    char* query = malloc(sizeof(char) * 255);
+    memset(query, 0, sizeof(char) * 255);
+
+    // receive the message
+    int cnt = mrecv(sock, query, 255-1);
+
+    // close the socket connection
+    if (msockdestroy(sock) < 0) {
+      perror("msockdestroy");
+      exit(1);
+    }
+
+    // check for errors
+    if (cnt < 0 && errno != 0) {
+      perror("mrecv");
+    }
+
+    // search for the movie
+    char* moviePath = searchForMovie(query);
+
+    // if we have the movie
+    if(moviePath != NULL) {
+      // send our IP and port
+      sendServInfo(tcpport);
+    } else {
+      // log that the movie was not found
+      movieNotFound();
+    }
+  }
 }
 
 
@@ -133,14 +221,11 @@ void runServer(char* port) {
     exit(1);
   }
 
-  logServerStart(port);
-
-  while(1) {  // main accept() loop
+  while(1) {
     sin_size = sizeof their_addr;
     new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
     if (new_fd == -1) {
       perror("accept");
-      continue;
     }
 
     inet_ntop(their_addr.ss_family,
@@ -151,8 +236,13 @@ void runServer(char* port) {
     if (!fork()) { // this is the child process
       close(sockfd); // child doesn't need the listener
       // recv command
-      recvcmd(new_fd);
+      char* mvpath = recvtitle(new_fd);
+      printf("got the path: %s\n", mvpath);
+      char* fps = recvfps(new_fd);
+      printf("got the fps: %s\n", fps);
+      sendframes(new_fd, mvpath, fps);
 
+      printf("then it exited from sending frames\n");
       close(new_fd);
       exit(0);
     }
@@ -161,12 +251,67 @@ void runServer(char* port) {
 }
 
 
+// send the movie frames to the client via the sockfd
+// at the specified fps
+void sendframes(int sockfd, char* mvpath, char* fps) {
+  FILE* fp = fopen(mvpath, "r");
+
+  if(fp == NULL) {
+    perror("sendframes: fopen");
+    exit(1);
+  }
+
+  char frame[MAXDATASIZE];
+  char line[255];
+  memset(frame, 0, sizeof(char) * MAXDATASIZE);
+  memset(line, 0, sizeof(char) * 255);
+
+
+  // while we haven't reached the end of the file
+  while(!feof(fp)) {
+    // copy the line
+    if(fgets(line, 255, fp) == NULL) {
+      break;
+    }
+
+    // while we haven't read "end\n"
+    while(strcmp(line, "end\n") != 0) {
+      // concat the line to the frame
+      strcat(frame, line);
+      // reset the line
+      memset(line, 0, sizeof(char) * 255);
+      if(feof(fp))
+        break;
+      // get the next line
+      if(fgets(line, 255, fp) == NULL) {
+        break;
+      }
+    }
+
+    // send the frame
+    if (send(sockfd, frame, sizeof(frame), 0) == -1) {
+      perror("send");
+      break;
+    }
+    memset(frame, 0, sizeof(char) * MAXDATASIZE);
+    memset(line, 0, sizeof(char) * 255);
+    usleep(100000);
+  }
+
+  // tell the client we're done
+  send(sockfd, "done", sizeof("done"), 0);
+
+  fclose(fp);
+}
+
+
 /*
- * receives the command from the client
+ * returns the path of the movie from the client's request
  */
-void recvcmd(int sockfd) {
+char* recvtitle(int sockfd) {
   int numbytes;
   char buf[MAXDATASIZE];
+  memset(buf, 0, sizeof(char) * MAXDATASIZE);
 
   // read the command from the client
   if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
@@ -175,59 +320,33 @@ void recvcmd(int sockfd) {
   }
   buf[numbytes] = '\0';
 
-  printf("Running command: %s\n\n", buf);
 
-  dup2(sockfd, STDOUT_FILENO);
-  dup2(sockfd, STDERR_FILENO);
+  int bytesize = strlen(MOVIE_DIR) + strlen(buf) + 4;
+  char* moviePath = (char *) malloc(sizeof(char) * bytesize);
+  memset(moviePath, 0, sizeof(char) * bytesize);
+  // concatenate "movies/" to the path
+  strcat(moviePath, MOVIE_DIR);
+  // concatenate the movie title to the path but remove
+  // the newline at the end of the string
+  strncat(moviePath, buf, strlen(buf)-1);
+  // concatenate the movie file extension to the path
+  strcat(moviePath, ".txt");
 
-  run_command(buf);
-  if (send(sockfd, "\n", 1, 0) == -1)
-    perror("send");
+  return moviePath;
 }
 
 
+// receive the fps from the client
+char* recvfps(int sockfd) {
+  int numbytes;
+  char *fps = (char*) malloc(sizeof(char)*2);
 
-/*
- * logs that the password is ok
- */
-void logpwok() {
-  printf("Password is ok\n");
-}
+  if ((numbytes = recv(sockfd, fps, MAXDATASIZE-1, 0)) == -1) {
+    perror("recv");
+    exit(1);
+  }
 
-
-/*
- * generate a random key
- */
-char* genkey() {
-  time_t t;
-  srand((unsigned) &t);
-  char* str = malloc(sizeof(char) * 30);
-  sprintf(str, "%d", rand());
-  return str;
-}
-
-
-/*
- * send the key to the sockfd
- */
-void sendkey(int sockfd, char* salt) {
-  // generate random key
-  if (send(sockfd, salt, sizeof(salt), 0) == -1)
-    perror("send");
-}
-
-
-
-/*
- * logs that the server has started
- */
-void logServerStart(char* port) {
-  char buff[PATH_MAX + 1];
-  getcwd(buff, PATH_MAX + 1);
-
-  printf("Starting server\n");
-  printf("\tport: %s\n", port);
-  printf("\tdir: %s\n\n", buff);
+  return fps;
 }
 
 
@@ -255,31 +374,6 @@ char* getPort(int argc, char* argv[]) {
     return port;
   else
     return newport;
-}
-
-/*
- * run a bash command that was passed in by the user
- */
-int run_command(char* command) {
-  int pid = fork();
-
-  if(pid < 0) {
-    perror("run_command: fork() error");
-    exit(1);
-  } else if (pid == 0) {
-    // we're the child
-    exit(system(command));
-  } else {
-    // we're the parent
-    int status;
-    struct timeval before;
-    struct timeval after;
-    gettimeofday(&before, NULL);
-    waitpid(pid, &status, 0);
-    gettimeofday(&after, NULL);
-    return status;
-  }
-  return 0;
 }
 
 

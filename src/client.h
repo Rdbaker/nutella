@@ -6,11 +6,12 @@
 void introduceSelf();
 void noResultsFound();
 char* getMovieQuery();
+void sendfps(int sockfd);
 char* queryServer(char* query);
-void watchMovie(char* servInfo);
-void connectToServer();
-void sendcmd(int sockfd, char* command);
-void recvres(int sockfd);
+void recvframes(int sockfd);
+void watchMovie(char* servInfo, char* movie);
+void connectToServer(char* host, char* port, char* movie);
+void sendtitle(int sockfd, char* movie);
 void clearScreen();
 
 

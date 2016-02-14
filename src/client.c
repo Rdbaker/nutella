@@ -13,7 +13,8 @@ int main(int argc, char* argv[]) {
       continue;
     }
     // contact and connect to the server
-    watchMovie(servInfo);
+    printf("about to watchMovie: %s\n", query);
+    watchMovie(servInfo, query);
   }
 }
 
@@ -59,9 +60,6 @@ char* queryServer(char* query) {
     exit(1);
   }
 
-  // we're done with the query
-  free(query);
-
   // create a timeout struct for the response
   struct timeval timeout;
   timeout.tv_sec = 4;
@@ -103,13 +101,33 @@ char* queryServer(char* query) {
     return NULL;
   }
 
+  printf("got message from server: %s\n", message);
   return message;
 }
 
 
 // watch the movie
-void watchMovie(char* servInfo) {
-  clearScreen();
+void watchMovie(char* servInfo, char* movie) {
+  char ip[strlen(servInfo)];
+  char port[strlen(servInfo)];
+  memset(ip, 0, strlen(ip));
+  memset(port, 0, strlen(port));
+  // get the ip and port from the string
+  int i = 0;
+  while(servInfo[i] != ':') {
+    ip[i] = servInfo[i];
+    i++;
+  }
+  i++;
+  int j = 0;
+  while(i < strlen(servInfo)) {
+    port[j] = servInfo[i];
+    j++; i++;
+  }
+  port[j] = '\0';
+
+  // connect to the server
+  connectToServer(ip, port, movie);
   return;
 }
 
@@ -121,9 +139,9 @@ void clearScreen() {
 }
 
 
-
-
-void connectToServer(char* host, char* port, char* command) {
+void connectToServer(char* host, char* port, char* movie) {
+  // this is bad but I need it for now, have some weird problem
+  host = "127.0.0.1";
   int sockfd;
   struct addrinfo hints, *servinfo, *p;
   int rv;
@@ -162,42 +180,59 @@ void connectToServer(char* host, char* port, char* command) {
 
   inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
       s, sizeof s);
-  printf("client: connecting to %s\n", s);
 
   freeaddrinfo(servinfo); // all done with this structure
 
-  // send cmd
-  sendcmd(sockfd, command);
-  // recv result
-  recvres(sockfd);
+  // send the movie title
+  sendtitle(sockfd, movie);
+
+  sleep(1);
+
+  // send fps
+  sendfps(sockfd);
+
+  // receive frames
+  recvframes(sockfd);
 
   close(sockfd);
-
-  exit(0);
-
 }
+
+// send the fps to the server
+void sendfps(int sockfd) {
+  printf("sending fps: %s\n", DEFAULT_FPS);
+  if (send(sockfd, DEFAULT_FPS, strlen(DEFAULT_FPS), 0) == -1)
+    perror("sendfps: send");
+}
+
+
+void sendtitle(int sockfd, char* movie) {
+  printf("sending movie title: %s\n", movie);
+  if (send(sockfd, movie, strlen(movie), 0) == -1)
+    perror("sendtitle: send");
+}
+
 
 /*
  * receive the result of the command from the server
  */
-void recvres(int sockfd) {
+void recvframes(int sockfd) {
   int numbytes;
   char buf[MAXDATASIZE];
 
   if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-    printf("this failed\n");
     perror("recv");
     exit(1);
   }
   buf[numbytes] = '\0';
 
-  printf("%s\n",buf);
-}
-
-/*
- * send the command to the server
- */
-void sendcmd(int sockfd, char* command) {
-  if (send(sockfd, command, strlen(command), 0) == -1)
-    perror("send");
+  while(strncmp(buf, "done\0", 4) != 0) {
+    clearScreen();
+    printf("%s", buf);
+    buf[numbytes] = '\0';
+    memset(buf, 0, sizeof(char)*MAXDATASIZE);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+      perror("recv");
+      exit(1);
+    }
+  }
 }
